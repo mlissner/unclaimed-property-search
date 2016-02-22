@@ -4,6 +4,7 @@ import argparse
 import csv
 from collections import defaultdict
 
+import re
 from selenium import webdriver
 
 browser = webdriver.Firefox()
@@ -12,35 +13,37 @@ browser.implicitly_wait(1)
 
 def make_contacts_dict(contacts_file):
     """Convert the contacts file into a dict."""
-    return list(csv.DictReader(contacts_file))
+    with open(contacts_file, 'r', encoding='utf-16') as f:
+        return list(csv.DictReader(f))
+
+
+def get_float_from_string(str):
+    """Clear out any junk and get the right value as a float."""
+    return float(re.findall("\d+\.\d+", str)[0])
 
 
 def get_p_type_details(link):
     """Get the details off the detail page for properties held by the state."""
     browser.get(link)
-    details = {
+    return {
         'reporter': browser.find_element_by_id('ReportedByData').text,
-        'amount': float(browser.find_element_by_id(
+        'amount': get_float_from_string(browser.find_element_by_id(
                 'ctl00_ContentPlaceHolder1_CashReportData'
-            ).text.strip().strip("$")),
+            ).text),
         'property_type': browser.find_element_by_id('PropertyTypeData').text,
     }
-    browser.back()
-    return details
 
 
-def get_n_type_details(link):
+def get_n_or_i_type_details(link):
     """Get the details off the details page for properties held by the
     business.
     """
     browser.get(link)
-    details = {
+    return {
         'reporter': browser.find_element_by_id('HolderNameData').text,
         'property_type': browser.find_element_by_id('PropertyTypeData').text,
         'amount': browser.find_element_by_id('AmountData').text,
     }
-    browser.back()
-    return details
 
 
 def get_type_from_image(td):
@@ -50,6 +53,8 @@ def get_type_from_image(td):
         return 'p'
     elif 'nIcon' in src:
         return 'n'
+    elif 'iIcon' in src:
+        return 'i'
 
 
 def submit_contact(contact, reverse_names=False):
@@ -68,16 +73,28 @@ def submit_contact(contact, reverse_names=False):
     first_name_box.clear()
     if reverse_names is False:
         # Do it normally
+        if not contact['Family Name']:
+            return []
         last_name_box.send_keys(contact['Family Name'])
         first_name_box.send_keys('%s\n' % contact['Given Name'])
     else:
         # Reverse first and last names.
+        if not contact['Given Name']:
+            return []
         last_name_box.send_keys(contact['Given Name'])
         first_name_box.send_keys('%s\n' % contact['Family Name'])
 
     # Get the table of results
     result_rows = browser.find_elements_by_css_selector(
             '#ctl00_ContentPlaceHolder1_gvResults tr')
+    if (result_rows and
+                len(result_rows[-2].find_elements_by_xpath('td')) == 1):
+        print("WARNING: '{} {}' had a ton of results and was skipped.".format(
+            contact['Given Name'],
+            contact['Family Name'],
+        ))
+        return []
+
     findings = []
     for row in result_rows:
         # Convert each row to a dict
@@ -98,10 +115,10 @@ def submit_contact(contact, reverse_names=False):
     # Get the details in a second pass, or else we lose the table of results
     # from Selenium when we go to the next page.
     for finding in findings:
-        if finding['type'].lower() == 'p':
+        if finding['type'] == 'p':
             details = get_p_type_details(finding['link'])
-        elif finding['type'].lower() == 'n':
-            details = get_n_type_details(finding['link'])
+        elif finding['type'] in ['n', 'i']:
+            details = get_n_or_i_type_details(finding['link'])
         else:
             print("WARNING: Unknown claim type.")
             details = {}
@@ -146,7 +163,7 @@ def print_report(report_data):
                           "you reverse {}'s first and last names!".format(
                         person,
                     ))
-            elif finding['type'] == 'n':
+            elif finding['type'] in ['n', 'i']:
                 print('  {}. {} of {} from {} with address {}, {}.'.format(
                     i,
                     finding['amount'],
@@ -163,7 +180,6 @@ def main():
                     'claim from the State of California.')
     parser.add_argument(
             '-f', '--contacts-file',
-            type=argparse.FileType('r'),
             help='The path to your contacts file.',
             required=True
     )
