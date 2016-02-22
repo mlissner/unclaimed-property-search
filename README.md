@@ -18,7 +18,7 @@ Download the code, then run:
 
 # Usage
 
-1. Go to Gmail contacts and export your contacts as a Google CSV.
+1. Go to Gmail contacts and export your contacts as a Google CSV. (Hint: You can create contact groups and only export those if you don't want to run this on everybody.)
 
 1. Remove anybody the CSV that you don't want to check or just go ahead and check everybody.
 

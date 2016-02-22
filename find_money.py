@@ -6,6 +6,7 @@ from collections import defaultdict
 
 import re
 from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException
 
 browser = webdriver.Firefox()
 browser.implicitly_wait(1)
@@ -25,11 +26,16 @@ def get_float_from_string(str):
 def get_p_type_details(link):
     """Get the details off the detail page for properties held by the state."""
     browser.get(link)
+    try:
+        amount = get_float_from_string(browser.find_element_by_id(
+                'ctl00_ContentPlaceHolder1_CashReportData'
+        ).text)
+    except NoSuchElementException:
+        amount = 0
+
     return {
         'reporter': browser.find_element_by_id('ReportedByData').text,
-        'amount': get_float_from_string(browser.find_element_by_id(
-                'ctl00_ContentPlaceHolder1_CashReportData'
-            ).text),
+        'amount': amount,
         'property_type': browser.find_element_by_id('PropertyTypeData').text,
     }
 
